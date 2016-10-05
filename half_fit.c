@@ -22,6 +22,11 @@ struct bit_vector_t bit_vector;
 void *bucket_heads[BUCKET_COUNT];
 
 __inline void * to_pointer(unsigned int x) {
+    //todo remove this debugging check
+    if ((x - (U32)(memory_address)) >= 32768) {
+        printf("Memory address out of bounds %d", x);
+    }
+
 	return (void*)(long)(x);
 }
 
