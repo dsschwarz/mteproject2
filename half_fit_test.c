@@ -21,7 +21,7 @@
 #define RNDM_TESTS	100
 
 //DO_PRINT allows or prevents the printf statements from being called. The elapsed time printf is the only statement that is run. 
-//#define DO_PRINT
+#define DO_PRINT
 
 /**-----------------------------------------------------------------Timer part--------------------------------------------------------*/
 // How many ticks are passed
@@ -180,6 +180,7 @@ bool test_max_alc( void ) {
 	bool rslt = true;
 	uint32_t blk_sz, max_blk_sz;
 	
+	printf("starting test");
 	half_init();
 
 	blk_sz = find_max_block();
@@ -554,12 +555,12 @@ int main( void ) {
 	TimerInit();
 
 	TimerStart(); {
-		printf( "max_alc: %i\n",                   test_max_alc() );
-		printf( "alc_free_max: %i\n",              test_alc_free_max() );
-		printf( "static_alc_free: %i\n",           test_static_alc_free() );
-		printf( "static_alc_free_violation: %i\n", test_static_alc_free_violation() );
-		printf( "rndm_alc_free: %i\n",             test_rndm_alc_free() );
-		printf( "max_alc_1_byte: %i\n",            test_max_alc_1_byte() );
+// 		printf( "***max_alc: %i\n",                   test_max_alc() );
+// 		printf( "***alc_free_max: %i\n",              test_alc_free_max() );
+// 		printf( "***static_alc_free: %i\n",           test_static_alc_free() );
+// 		printf( "***static_alc_free_violation: %i\n", test_static_alc_free_violation() );
+ 		printf( "***rndm_alc_free: %i\n",             test_rndm_alc_free() );
+		printf( "***max_alc_1_byte: %i\n",            test_max_alc_1_byte() );
 	} TimerStop();
 	
 	printf( "The elappsed time:              %d ms\n", current_elapsed_time());

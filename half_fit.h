@@ -4,7 +4,7 @@
 /*
  * Author names:
  *   1.  uWaterloo User ID:  dschwarz@uwaterloo.ca
- *   2.  uWaterloo User ID:  xxxxxxxx@uwaterloo.ca
+ *   2.  uWaterloo User ID:  jh24cho@uwaterloo.ca
  */
 
 #include "type.h"
@@ -14,11 +14,18 @@
 #define lrgst_blk                       15 
 #define lrgst_blk_sz    ( 1 << lrgst_blk ) // 32768
 
-#define NULL ((char *)0)
+// #define mprint0(str)  printf(str)
+// #define mprint(str, arg1)  printf(str, arg1)
+// #define mprint2(str, arg1, arg2)  printf(str, arg1, arg2)
+// #define mprint3(str, arg1, arg2, arg3)  printf(str, arg1, arg2, arg3)
+#define mprint0(str)  while(false){}
+#define mprint(str, arg1)  while(false){}
+#define mprint2(str, arg1, arg2)  while(false){}
+#define mprint3(str, arg1, arg2, arg3)  while(false){}
 
-struct {
+struct bit_vector_t {
     unsigned int buckets : 11;
-} bit_vector;
+};
 
 /**
  * The header in all blocks. Points to the address of the adjacent blocks,
