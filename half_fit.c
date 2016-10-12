@@ -6,13 +6,14 @@
 #include "uart.h"
 
 const int BYTES_TO_BIT_SHIFT = 3;
-const short BUCKET_COUNT = 11; // 32-63, 64-127, 128-255, 256-511; 512-1023, 1024-2047, 2048, 4096, 8192, 16384-32767, 32768
-const short HEADER_SIZE = 32; // bits
-const short CHUNK_SIZE_POWER = 5; // 2^8 = 32*8 = 256
+const int BUCKET_COUNT = 11; // 32-63, 64-127, 128-255, 256-511; 512-1023, 1024-2047, 2048, 4096, 8192, 16384-32767, 32768
+const int HEADER_SIZE = 32; // bits
+const int HEADER_SIZE_BYTES = 4;
+const int CHUNK_SIZE_POWER = 5; // 2^5 = 32 bytes
 const int CHUNK_SIZE = 1 << CHUNK_SIZE_POWER; // 32 bytes
 const int CHUNK_SIZE_BITS = (1 << CHUNK_SIZE_POWER) << BYTES_TO_BIT_SHIFT; // 256 bits
 const int MAX_SIZE_BITS = CHUNK_SIZE_BITS<<10; // bits
-const int MAX_SIZE = CHUNK_SIZE<<10; // bytes
+const int MAX_SIZE = CHUNK_SIZE<<10; // 1024*32 bytes
 // set aside memory (32 kB)
 unsigned char memory_pool[MAX_SIZE] __attribute__ ((section(".ARM.__at_0x10000000"), zero_init));
 void * memory_address = &memory_pool;
@@ -27,29 +28,29 @@ __inline void * to_pointer(unsigned int x) {
         printf("Memory address out of bounds %d", x);
     }
 
-	return (void*)(long)(x);
+    return (void*)(long)(x);
 }
 
 void  half_init(void){
-		U32 i;
-	  U32 short_address = 0;
-		block_header_t * header = (block_header_t *)(memory_address);
-	  mprint0("Starting init\n");
-		header->next_block = short_address;
-	  header->previous_block = short_address;
-	  header->block_size = shorten_block_size(MAX_SIZE_BITS);
-	  header->allocated = 0;
-	
+    U32 i;
+    U32 short_address = 0;
+    block_header_t * header = (block_header_t *)(memory_address);
+    mprint0("Starting init\n");
+    header->next_block = short_address;
+    header->previous_block = short_address;
+    header->block_size = shorten_block_size(MAX_SIZE_BITS);
+    header->allocated = 0;
+
     // create bit vector that contains whether buckets are empty or not
     bit_vector.buckets = 0;
-	
-		for (i = 0; i < BUCKET_COUNT; i++) {
-			bucket_heads[i] = 0;
-		}
+
+    for (i = 0; i < BUCKET_COUNT; i++) {
+        bucket_heads[i] = 0;
+    }
     // add reserved memory to largest bucket
     add_to_known_bucket(memory_address, BUCKET_COUNT-1);
-	
-	  mprint0("Ending init\n");
+
+    mprint0("Ending init\n");
 }
 
 /**
@@ -60,15 +61,14 @@ void  half_init(void){
 void *half_alloc(U32 size){
     // effective size of size+4. We'll be using that from now on
     U32 block_size;
-		block_header_t *header;
-	  void * first_block_address;
-		U32 effective_size = round_up_to_chunk_size(size+4);
+    block_header_t *header;
+    void * first_block_address;
+    U32 effective_size = round_up_to_chunk_size(size+HEADER_SIZE_BYTES); // bytes
 
     // find bucket
     signed int bucket_index = find_bucket(effective_size);
-	  mprint("Starting alloc for size: %d\n", size);
+    mprint2("Starting alloc for size: %d, effective_size: %d\n", size, effective_size);
     if (bucket_index == -1) {
-				mprint0("half_alloc: Bucket index is -1");
         return NULL;
     }
 
@@ -84,42 +84,42 @@ void *half_alloc(U32 size){
         // block size should be in bytes
         block_size = expand_block_size(header->block_size);
 
-        // todo find out if the smallest block is 32 bytes (4 bytes header, 28 usable). Will this block ever be used?
         if (block_size >= effective_size + CHUNK_SIZE) {
-						U32 new_block_size;
-						S32 new_bucket_index;
-						void * new_block_address;
-						U32 new_block_short_address;
-						block_header_t *new_header;
-						block_header_t * next_block;
-					  U32 short_address;
-						mprint("Block size %d is bigger than requested size, splitting\n", block_size);
+            U32 new_block_size;
+            S32 new_bucket_index;
+            void * new_block_address;
+            U32 new_block_short_address;
+            block_header_t *new_header;
+            block_header_t * next_block;
+            U32 short_address;
+            mprint("Block size %d is bigger than requested size, splitting\n", block_size);
             // create new free block, add to bucket
-						mprint("math: %d\n", block_size - effective_size);
+            mprint("math: %d\n", block_size - effective_size);
             new_block_size = block_size - effective_size;
-            new_block_address = to_pointer((int)(first_block_address) + (effective_size<<BYTES_TO_BIT_SHIFT));
-						mprint("new block header at %d\n", new_block_address);
-					  new_block_short_address = shorten_address(new_block_address); // 10 bit address
-					
-					  // update the header of the newly created block
+            new_block_address = to_pointer((int)(header) + (effective_size<<BYTES_TO_BIT_SHIFT));
+            mprint("new block header at %d\n", new_block_address);
+            new_block_short_address = shorten_address(new_block_address); // 10 bit address
+
+            // update the header of the newly created block
             new_header = (block_header_t *)(new_block_address);
-					  mprint0("Assigning header values");
+            mprint0("Assigning header values");
             new_header->block_size = shorten_block_size(new_block_size);
-					  mprint0("Assigning next_block");
+            mprint0("Assigning next_block");
             new_header->next_block = header->next_block;
-					
-					  short_address = shorten_address(first_block_address);
+
+            short_address = shorten_address(first_block_address);
             new_header->previous_block = short_address;
             new_header->allocated = 0;
-					
-						// update previous block of next block
+
+            // update previous block of next block
             mprint0("Updating next block");
-						next_block = (block_header_t*)(expand_address(header->next_block, (U32)header));
-						if (next_block) {
-							next_block->previous_block = new_block_short_address;
-						}
+            next_block = (block_header_t*)(expand_address(header->next_block, (U32)header));
+            if (next_block) {
+                next_block->previous_block = new_block_short_address;
+            }
 
             // Add new block to appropriate bucket
+            mprint0("Adding to bucket");
             new_bucket_index = get_bucket_index(new_block_size);
             if (new_bucket_index == -1) {
                 mprint("Invalid index for new bucket of size %d", new_block_size);
@@ -135,29 +135,29 @@ void *half_alloc(U32 size){
 
         header->allocated = 1;
 
-				mprint0("Ending alloc\n");
-        return to_pointer((int)first_block_address + HEADER_SIZE);
+        mprint0("Ending alloc\n");
+        return to_pointer((U32)first_block_address + HEADER_SIZE);
 
     } else {
-	      mprint("No address in bucket %d. Returning null", bucket_index);
+        mprint("No address in bucket %d. Returning null", bucket_index);
         return NULL;
     }
 }
 
 void  half_free(void * address){
-		U32 new_block_size;
-		S32 next_bucket_index;
-		S32 previous_bucket_index;
-		S32 new_block_bucket;
-		block_header_t * header;
-		block_header_t * new_header;
-		block_header_t * previous_block;
-		block_header_t * next_block;
-		block_header_t * new_next_block;
+    U32 new_block_size;
+    S32 next_bucket_index;
+    S32 previous_bucket_index;
+    S32 new_block_bucket;
+    block_header_t * header;
+    block_header_t * new_header;
+    block_header_t * previous_block;
+    block_header_t * next_block;
+    block_header_t * new_next_block;
     // free the block at the given address
     // create a new block from the adjacent blocks, if they are unallocated
-    void * effective_address = to_pointer((int)address - HEADER_SIZE);
-		mprint("Starting free address %d\n", address);
+    void * effective_address = to_pointer((U32)address - HEADER_SIZE);
+    mprint("Starting free address %d\n", address);
     header = (block_header_t *)(effective_address);
     // pointer to the location of the new header
     new_header = header;
@@ -173,7 +173,6 @@ void  half_free(void * address){
         new_next_block = (block_header_t *)expand_address(next_block->next_block, (U32)next_block);
 
         next_bucket_index = get_bucket_index(next_block->block_size);
-        // todo handle bucket_index = -1
         remove_from_known_bucket(next_block, (U32)next_bucket_index);
     }
     if (previous_block && !previous_block->allocated) {
@@ -196,35 +195,35 @@ void  half_free(void * address){
     new_block_bucket = get_bucket_index(new_block_size);
     // todo handle -1 (size is invalid)
     add_to_known_bucket(new_header, (U32)new_block_bucket);
-		mprint0("Ending free\n");
+    mprint0("Ending free\n");
 }
 
 /**
  * Remove the given, currently unused block from the given bucket
  */
 void remove_from_known_bucket(void * block_address, U32 bucket_index) {
-	// todo previous in bucket pointer
-	  void * next_in_bucket_pointer;
-		unused_block_header_t *next_header;
+    // todo previous in bucket pointer
+    void * next_in_bucket_pointer;
+    unused_block_header_t *next_header;
     unused_block_header_t *header = (unused_block_header_t*)((int)block_address+HEADER_SIZE);
-	
-		mprint2("Removing address %d from bucket %d\n", block_address, bucket_index);
+
+    mprint2("Removing address %d from bucket %d\n", block_address, bucket_index);
 
     next_in_bucket_pointer = expand_address(header->next_block, (U32)block_address);
 
-		// could be null, or a valid pointer
+    // could be null, or a valid pointer
     bucket_heads[bucket_index] = next_in_bucket_pointer;
 
     if (next_in_bucket_pointer) {
-				mprint("Updating next in bucket at address: %d\n", next_in_bucket_pointer);
+        mprint("Updating next in bucket at address: %d\n", next_in_bucket_pointer);
         next_header = (unused_block_header_t*)((int)next_in_bucket_pointer+HEADER_SIZE);
         next_header->previous_block = header->next_block; // point to itself to indicate null;
     } else {
-			// bucket is empty
-				mprint0("Bucket is empty\n");
+        // bucket is empty
+        mprint0("Bucket is empty\n");
         bit_vector.buckets = bit_vector.buckets & !(1 << bucket_index);
     }
-		mprint0("Ending remove\n");
+    mprint0("Ending remove\n");
 }
 
 void add_to_known_bucket(void * address, U32 bucket_index) {
@@ -233,18 +232,18 @@ void add_to_known_bucket(void * address, U32 bucket_index) {
 
     // updates pointers in header
     void * next_address = bucket_heads[bucket_index];
-	  mprint2("Adding address %d to bucket %d\n", address, bucket_index);
+    mprint2("Adding address %d to bucket %d\n", address, bucket_index);
     if (next_address) {
         // bucket has children
         unused_block_header_t *next_header = (unused_block_header_t*)((int)next_address+HEADER_SIZE);
-				mprint("Next address is %d", next_address);
+        mprint("Next address is %d", next_address);
         next_header->previous_block = short_address;
         this_header->next_block = shorten_address(next_address);
         // this_header->previous_block = short_address; // todo does it matter if previous block is set to null?
 
         bucket_heads[bucket_index] = address;
     } else {
-				mprint("Next block is null, using short_address: %d", short_address);
+        mprint("Next block is null, using short_address: %d\n", short_address);
         bucket_heads[bucket_index] = address;
         this_header->next_block = short_address; // set to null by setting to itself
     }
@@ -252,7 +251,7 @@ void add_to_known_bucket(void * address, U32 bucket_index) {
     // update bit vector. Bucket is non empty
     // Put here for extra safety - it could also be put in the else branch
     bit_vector.buckets = bit_vector.buckets | (1 << bucket_index);
-		mprint0("Done adding\n");
+    mprint0("Done adding\n");
 }
 
 /**
@@ -282,9 +281,10 @@ signed int find_bucket(U32 size) {
  * @return index of the corresponding bucket. -1 if no bucket exists
  */
 signed int get_bucket_index(U32 size) {
-	int bucket_index;
-	int value;
+    int bucket_index;
+    int value;
     if (size > MAX_SIZE) {
+        mprint("Size is greater than max size: %d\n", size);
         return -1;
     }
 
@@ -292,12 +292,11 @@ signed int get_bucket_index(U32 size) {
     // value is initially the number of 32 byte chunks that fit inside size
     value = size >> CHUNK_SIZE_POWER; // shift it right 5
 
-    // keep dividing by two until the value is 1. If the value is 0, never enter the while loop
+    // keep dividing by two until the value is 1. If the value is 0 or 1, never enter the while loop
     while (value > 1) {
         value = value >> 1;
         bucket_index++;
     }
-		mprint2("Bucket index for size %d is index: %d\n", size, bucket_index);
     return bucket_index;
 }
 
@@ -307,9 +306,9 @@ signed int get_bucket_index(U32 size) {
  * @return index of the corresponding bucket. -1 if no bucket exists
  */
 signed int get_guaranteed_bucket(U32 size) {
-	int bucket_index;
-	int value;
-	int has_remainder;
+    int bucket_index;
+    int value;
+    int has_remainder;
     if (size > MAX_SIZE) {
         return -1;
     }
@@ -367,7 +366,7 @@ U32 shorten_address(void *address) {
     if (address < memory_address) {
         mprint0("ERROR: address is out of bounds\n");
     }
-		return (((unsigned int)address) - ((unsigned int)memory_address)) >> (CHUNK_SIZE_POWER + BYTES_TO_BIT_SHIFT);
+    return (((unsigned int)address) - ((unsigned int)memory_address)) >> (CHUNK_SIZE_POWER + BYTES_TO_BIT_SHIFT);
 }
 
 U32 round_up_to_chunk_size(U32 value) {
@@ -393,12 +392,12 @@ U32 expand_block_size(U32 short_size) {
  * @return
  */
 U32 shorten_block_size(U32 size) {
-		mprint("Shortening block size: %d\n", size);
+    mprint("Shortening block size: %d\n", size);
     if ((size & 31) != 0) {
         mprint("ERROR size is not a multiple of 32: %d", size);
     }
-    if (size == 0) {
-        mprint0("ERROR size is 0");
+    if (size < 32) {
+        mprint0("ERROR size is less than chunk size");
     }
-    return (size >> CHUNK_SIZE_POWER) - 1; // multiply by 32
+    return (size >> CHUNK_SIZE_POWER) - 1;
 }
