@@ -59,6 +59,7 @@ signed int find_bucket(unsigned int size);
 signed int get_bucket_index(unsigned int size);
 signed int get_guaranteed_bucket(unsigned int size);
 
+void remove_head_from_known_bucket(void * block_address, U32 bucket_index);
 void remove_from_known_bucket(void * block_address, unsigned int bucket_index);
 void add_to_known_bucket(void * address, unsigned int bucket_index);
 

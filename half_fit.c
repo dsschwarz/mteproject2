@@ -78,7 +78,7 @@ void *half_alloc(U32 size){
 
     if (first_block_address) {
         // Remove allocated block from its bucket, by modifying the points of its neighbours
-        remove_from_known_bucket(first_block_address, (U32)bucket_index);
+        remove_head_from_known_bucket(first_block_address, (U32)bucket_index);
 
         // split block if >= 32 bytes larger than requested size
         // block size should be in bytes
@@ -200,14 +200,67 @@ void  half_free(void * address){
 
 /**
  * Remove the given, currently unused block from the given bucket
+ *
+ * Warning: when you update this method, also update the remove_head_from_known_bucket_method
  */
 void remove_from_known_bucket(void * block_address, U32 bucket_index) {
-    // todo previous in bucket pointer
+    void * next_in_bucket_pointer;
+    void * previous_in_bucket_pointer;
+    unused_block_header_t *next_header;
+    unused_block_header_t *previous_header;
+    unused_block_header_t *header = (unused_block_header_t*)((int)block_address+HEADER_SIZE);
+
+    if (block_address == bucket_heads[bucket_index]) {
+        mprint0("Address is a bucket head");
+        remove_head_from_known_bucket(block_address, bucket_index);
+        return;
+    }
+
+    mprint2("Removing address %d from bucket %d\n", block_address, bucket_index);
+
+    next_in_bucket_pointer = expand_address(header->next_block, (U32)block_address);
+    previous_in_bucket_pointer = expand_address(header->previous_block, (U32)block_address);
+
+    if (next_in_bucket_pointer) {
+        mprint("Updating next in bucket at address: %d\n", next_in_bucket_pointer);
+        next_header = (unused_block_header_t*)((int)next_in_bucket_pointer+HEADER_SIZE);
+        if (previous_in_bucket_pointer) {
+            next_header->previous_block = shorten_address(previous_in_bucket_pointer);
+        } else {
+            next_header->previous_block = header->next_block; // points to itself to indicate null
+        }
+    }
+
+    if (previous_in_bucket_pointer) {
+        mprint("Updating previous in bucket at address: %d\n", previous_in_bucket_pointer);
+        previous_header = (unused_block_header_t*)((int)previous_in_bucket_pointer+HEADER_SIZE);
+        if (next_in_bucket_pointer) {
+            previous_header->next_block = shorten_address(next_in_bucket_pointer);
+        } else {
+            previous_header->next_block = header->previous_block; // points to itself to indicate null
+        }
+    }
+
+    if (!previous_in_bucket_pointer && !next_in_bucket_pointer) {
+        // bucket is empty
+        mprint0("Bucket is empty\n");
+        bit_vector.buckets = bit_vector.buckets & !(1 << bucket_index);
+    }
+}
+
+/**
+ * Remove the given, currently unused block from the given bucket, given that the block is the head of the bucket.
+ */
+void remove_head_from_known_bucket(void * block_address, U32 bucket_index) {
     void * next_in_bucket_pointer;
     unused_block_header_t *next_header;
     unused_block_header_t *header = (unused_block_header_t*)((int)block_address+HEADER_SIZE);
 
-    mprint2("Removing address %d from bucket %d\n", block_address, bucket_index);
+    mprint2("Removing HEAD address %d from bucket %d\n", block_address, bucket_index);
+    if (block_address != bucket_heads[bucket_index]) {
+        mprint0("ERROR: block_address is not bucket head");
+        return;
+    }
 
     next_in_bucket_pointer = expand_address(header->next_block, (U32)block_address);
 
